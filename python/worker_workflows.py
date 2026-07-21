@@ -249,6 +249,11 @@ def cmd_infer_workflow_batch(payload: dict[str, Any]) -> int:
                 files = [output["path"] for output in outputs]
                 if not files and task_output_dir.exists():
                     files = [str(path) for path in task_output_dir.rglob(f"*.{output_format}") if path.is_file() and path.stat().st_mtime >= batch_start_time]
+                    outputs = []
+                    for path in files:
+                        p = Path(path)
+                        stem = p.stem.split("_")[-1] if "_" in p.stem else p.stem
+                        outputs.append({"stem": stem, "path": path})
                 emit("task_done", {
                     "files": files,
                     "outputs": outputs,
@@ -331,6 +336,11 @@ def cmd_infer_workflow(payload: dict[str, Any]) -> int:
                 files = [item["path"] for item in outputs]
                 if not files:
                     files = [str(path) for path in task_output_dir.rglob(f"*.{output_format}") if path.is_file() and path.stat().st_mtime >= workflow_start_time]
+                    outputs = []
+                    for path in files:
+                        p = Path(path)
+                        stem = p.stem.split("_")[-1] if "_" in p.stem else p.stem
+                        outputs.append({"stem": stem, "path": path})
                 emit("task_done", {
                     "files": files,
                     "outputs": outputs,
