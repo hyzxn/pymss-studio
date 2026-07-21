@@ -391,7 +391,8 @@ def normalize_audio_params(payload_audio_params: Any) -> dict[str, Any]:
         **defaults,
         **payload_audio_params,
     }
-    normalized["m4a_codec"] = "aac" if str(normalized.get("m4a_codec") or "").strip().lower() == "aac" else "aac"
+    codec = str(normalized.get("m4a_codec") or "").strip().lower()
+    normalized["m4a_codec"] = codec if codec in ("aac", "aac_at") else "aac"
     return normalized
 
 

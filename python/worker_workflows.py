@@ -5,6 +5,7 @@ import os
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 import traceback
 from pathlib import Path
@@ -71,6 +72,8 @@ def _candidate_commands(workflow_path: Path, input_path: str, output_dir: str, p
         str(audio_params.get("m4a_bit_rate") or "512k"),
         "--m4a-codec",
         str(audio_params.get("m4a_codec") or "aac"),
+        "--m4a-aac-at-quality",
+        str(audio_params.get("m4a_aac_at_quality") or 2),
     ]
     model_dir = str(payload.get("modelDir") or "").strip()
     if model_dir:
@@ -99,6 +102,13 @@ def _candidate_commands(workflow_path: Path, input_path: str, output_dir: str, p
     ]
 
 
+def _terminate_process(process: subprocess.Popen[bytes], task_id: str) -> None:
+    try:
+        process.kill()
+    except Exception as exc:
+        emit("task_log", {"level": "warning", "message": f"Failed to terminate workflow process for {task_id}: {exc}"}, task_id=task_id)
+
+
 def _run_workflow_cli(command: list[str], task_id: str) -> tuple[int, str]:
     emit("task_log", {"level": "info", "message": " ".join(command)}, task_id=task_id)
     process = subprocess.Popen(
@@ -124,7 +134,14 @@ def _run_workflow_cli(command: list[str], task_id: str) -> tuple[int, str]:
         except Exception:
             pass
         emit("task_log", {"level": "info", "message": text}, task_id=task_id)
-    return process.wait(), "\n".join(lines[-40:])
+    timer = None
+    try:
+        timer = threading.Timer(6 * 3600, _terminate_process, args=(process, task_id))
+        timer.start()
+        return process.wait(), "\n".join(lines[-40:])
+    finally:
+        if timer is not None:
+            timer.cancel()
 
 
 def _workflow_task_output_dir(output_dir: str, input_path: str, output_layout: str) -> Path:
