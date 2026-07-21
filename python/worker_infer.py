@@ -402,6 +402,14 @@ def cmd_infer_batch(payload: dict[str, Any]) -> int:
         return emit_error("INPUT_NOT_FOUND", "Missing batch tasks", task_id=payload.get("taskId") or None)
 
     root_task_id = str(payload.get("taskId") or raw_tasks[0].get("taskId") or f"sep_{int(datetime.now().timestamp())}")
+    model_name = payload.get("model")
+    if not model_name:
+        return emit_error("MODEL_NOT_FOUND", "Missing model name", task_id=root_task_id)
+    try:
+        _resolve_separator_device(payload.get("device"), payload.get("deviceIds"))
+    except Exception as exc:
+        return emit_error("DEVICE_CONFIG_INVALID", str(exc), task_id=root_task_id)
+
     output_root = _normalize_output_dir(payload.get("output"))
     output_format = payload.get("outputFormat") or "wav"
     output_layout = _normalize_output_layout(payload.get("outputLayout"))
@@ -478,6 +486,7 @@ def cmd_infer_batch(payload: dict[str, Any]) -> int:
             progress_callback=emit_batch_progress,
             logger=logger,
         )
+        failed = False
         for item in batch_tasks:
             task_id = item["taskId"]
             active_task_id = task_id
@@ -485,6 +494,7 @@ def cmd_infer_batch(payload: dict[str, Any]) -> int:
             success_files = separator.process_folder(item["input"])
             if Path(item["input"]).name not in {Path(name).name for name in success_files}:
                 emit_error("INFERENCE_FAILED", f"Batch separation did not produce outputs for {Path(item['input']).name}", task_id=task_id)
+                failed = True
                 continue
             task_output = resolve_pymss_output_dir(output_root, success_files, item["input"], save_as_folder)
             emit("task_stage", {"stage": "writing_output", "message": "Collecting outputs"}, task_id=task_id)
@@ -496,10 +506,19 @@ def cmd_infer_batch(payload: dict[str, Any]) -> int:
                 "outputFormat": output_format,
             }, task_id=task_id)
         active_task_id = None
-        return 0
+        return 1 if failed else 0
     except Exception as exc:
+        msg = str(exc)
+        detail = traceback.format_exc()
+        lowered = msg.lower()
+        if "download" in lowered:
+            code = "MODEL_DOWNLOAD_FAILED"
+        elif "model" in lowered:
+            code = "MODEL_NOT_FOUND"
+        else:
+            code = "INFERENCE_FAILED"
         for item in batch_tasks:
-            _emit_inference_error(exc, item["taskId"])
+            emit_error(code, msg, detail, task_id=item["taskId"])
         return 1
     finally:
         if logger is not None and log_handler is not None:
