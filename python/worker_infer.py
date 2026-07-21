@@ -27,13 +27,17 @@ class JsonLogHandler:
         return True
 
 
-def collect_outputs(output_dir: str, success_files: list[str], output_format: str) -> list[dict[str, str]]:
+def collect_outputs(output_dir: str, success_files: list[str], output_format: str, min_mtime: float = 0) -> list[dict[str, str]]:
     base = Path(output_dir)
     outputs: list[dict[str, str]] = []
     if not base.exists():
         return outputs
-    success_stems = {Path(name).stem for name in success_files}
+    success_stems = sorted({Path(name).stem for name in success_files}, key=len, reverse=True)
     for path in base.rglob(f"*.{output_format.lower()}"):
+        if not path.is_file():
+            continue
+        if min_mtime > 0 and path.stat().st_mtime < min_mtime:
+            continue
         if success_stems and not any(path.stem.startswith(stem + "_") or path.stem == stem for stem in success_stems):
             continue
         stem = path.stem.split("_")[-1] if "_" in path.stem else path.stem
