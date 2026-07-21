@@ -12,17 +12,8 @@ from pathlib import Path
 from typing import Any
 
 from worker_graph_workflows import is_graph_workflow_definition, run_graph_workflow_task
-from worker_infer import _normalize_output_layout, _resolve_separator_device, collect_outputs
+from worker_infer import _normalize_output_dir, _normalize_output_layout, _resolve_separator_device, collect_outputs
 from worker_protocol import emit, emit_error
-
-
-def _normalize_output_dir(value: Any) -> str:
-    default_output_dir = os.environ.get("PYMSS_STUDIO_DEFAULT_OUTPUT_DIR")
-    output_dir = value or default_output_dir or "results"
-    output_path = Path(str(output_dir))
-    if not output_path.is_absolute() and default_output_dir:
-        return str(Path(default_output_dir).parent / output_path)
-    return str(output_dir)
 
 
 def _write_workflow_definition(payload: dict[str, Any], task_id: str) -> Path:
@@ -121,27 +112,25 @@ def _run_workflow_cli(command: list[str], task_id: str) -> tuple[int, str]:
     )
     lines: list[str] = []
     assert process.stdout is not None
-    for line in process.stdout:
-        text = line.rstrip()
-        if not text:
-            continue
-        lines.append(text)
-        try:
-            event = json.loads(text)
-            if isinstance(event, dict) and isinstance(event.get("type"), str):
-                emit(event["type"], event.get("payload") if isinstance(event.get("payload"), dict) else {}, task_id=task_id)
-                continue
-        except Exception:
-            pass
-        emit("task_log", {"level": "info", "message": text}, task_id=task_id)
-    timer = None
+    timer = threading.Timer(6 * 3600, _terminate_process, args=(process, task_id))
+    timer.start()
     try:
-        timer = threading.Timer(6 * 3600, _terminate_process, args=(process, task_id))
-        timer.start()
+        for line in process.stdout:
+            text = line.rstrip()
+            if not text:
+                continue
+            lines.append(text)
+            try:
+                event = json.loads(text)
+                if isinstance(event, dict) and isinstance(event.get("type"), str):
+                    emit(event["type"], event.get("payload") if isinstance(event.get("payload"), dict) else {}, task_id=task_id)
+                    continue
+            except Exception:
+                pass
+            emit("task_log", {"level": "info", "message": text}, task_id=task_id)
         return process.wait(), "\n".join(lines[-40:])
     finally:
-        if timer is not None:
-            timer.cancel()
+        timer.cancel()
 
 
 def _workflow_task_output_dir(output_dir: str, input_path: str, output_layout: str) -> Path:
