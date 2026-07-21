@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import gc
 import os
 import traceback
 from datetime import datetime
@@ -31,11 +32,23 @@ def collect_outputs(output_dir: str, success_files: list[str], output_format: st
     outputs: list[dict[str, str]] = []
     if not base.exists():
         return outputs
-    success_stems = {Path(name).stem for name in success_files}
+    success_stems = sorted(
+        {Path(name).stem for name in success_files},
+        key=len,
+        reverse=True,
+    )
     for path in base.rglob(f"*.{output_format.lower()}"):
-        if success_stems and not any(path.stem.startswith(stem + "_") or path.stem == stem for stem in success_stems):
+        matched_prefix = None
+        for success_stem in success_stems:
+            if path.stem == success_stem or path.stem.startswith(success_stem + "_"):
+                matched_prefix = success_stem
+                break
+        if success_stems and matched_prefix is None:
             continue
-        stem = path.stem.split("_")[-1] if "_" in path.stem else path.stem
+        if matched_prefix and path.stem.startswith(matched_prefix + "_"):
+            stem = path.stem[len(matched_prefix) + 1:]
+        else:
+            stem = path.stem
         outputs.append({"stem": stem, "path": str(path)})
     return outputs
 
@@ -79,13 +92,41 @@ def _close_separator(separator: Any) -> None:
             separator.del_cache()
         except Exception:
             pass
+    _purge_cuda()
+
+def _purge_cuda() -> None:
+    gc.collect()
+    try:
+        import torch
+    except ImportError:
+        return
+    if not torch.cuda.is_available():
+        return
+    try:
+        torch.cuda.synchronize()
+    except Exception:
+        pass
+    torch.backends.cudnn.benchmark = False
+    try:
+        torch.backends.cudnn.cufft_plan_cache.clear()
+    except Exception:
+        pass
+    try:
+        torch.cuda.empty_cache()
+    except Exception:
+        pass
+    try:
+        torch.cuda.reset_peak_memory_stats()
+    except Exception:
+        pass
+    gc.collect()
 
 def _normalize_output_dir(value: Any) -> str:
     default_output_dir = os.environ.get("PYMSS_STUDIO_DEFAULT_OUTPUT_DIR")
     output_dir = value or default_output_dir or "results"
     output_path = Path(str(output_dir))
     if not output_path.is_absolute() and default_output_dir:
-        return str(Path(default_output_dir).parent / output_path)
+        return str(Path(default_output_dir).resolve().parent / output_path)
     return str(output_dir)
 
 def _normalize_selected_stems(value: Any) -> list[str]:
@@ -667,15 +708,4 @@ def cmd_infer(payload: dict[str, Any]) -> int:
                 logger.removeHandler(log_handler)
             except Exception:
                 pass
-        if separator is not None:
-            close = getattr(separator, "close", None)
-            if callable(close):
-                try:
-                    close()
-                except Exception:
-                    pass
-            else:
-                try:
-                    separator.del_cache()
-                except Exception:
-                    pass
+        _close_separator(separator)

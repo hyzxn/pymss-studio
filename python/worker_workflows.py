@@ -4,18 +4,14 @@ import json
 import subprocess
 import sys
 import tempfile
+import threading
 import traceback
 from pathlib import Path
 from typing import Any
 
 from worker_graph_workflows import is_graph_workflow_definition, run_graph_workflow_task
-from worker_infer import _normalize_output_layout, _resolve_separator_device, collect_outputs
+from worker_infer import _normalize_output_dir, _normalize_output_layout, _resolve_separator_device, collect_outputs
 from worker_protocol import emit, emit_error
-
-
-def _normalize_output_dir(value: Any) -> str:
-    text = str(value or "").strip()
-    return text or "results"
 
 
 def _write_workflow_definition(payload: dict[str, Any], task_id: str) -> Path:
@@ -65,6 +61,8 @@ def _candidate_commands(workflow_path: Path, input_path: str, output_dir: str, p
         str(audio_params.get("m4a_bit_rate") or "512k"),
         "--m4a-codec",
         str(audio_params.get("m4a_codec") or "aac"),
+        "--m4a-aac-at-quality",
+        str(audio_params.get("m4a_aac_at_quality") or "2"),
     ]
     model_dir = str(payload.get("modelDir") or "").strip()
     if model_dir:
@@ -93,6 +91,8 @@ def _candidate_commands(workflow_path: Path, input_path: str, output_dir: str, p
     ]
 
 
+WORKFLOW_CLI_TIMEOUT = 21600  # 6 hours
+
 def _run_workflow_cli(command: list[str], task_id: str) -> tuple[int, str]:
     emit("task_log", {"level": "info", "message": " ".join(command)}, task_id=task_id)
     process = subprocess.Popen(
@@ -103,22 +103,28 @@ def _run_workflow_cli(command: list[str], task_id: str) -> tuple[int, str]:
         encoding="utf-8",
         errors="replace",
     )
+    timer = threading.Timer(WORKFLOW_CLI_TIMEOUT, lambda: process.kill() if process.poll() is None else None)
+    timer.daemon = True
+    timer.start()
     lines: list[str] = []
     assert process.stdout is not None
-    for line in process.stdout:
-        text = line.rstrip()
-        if not text:
-            continue
-        lines.append(text)
-        try:
-            event = json.loads(text)
-            if isinstance(event, dict) and isinstance(event.get("type"), str):
-                emit(event["type"], event.get("payload") if isinstance(event.get("payload"), dict) else {}, task_id=task_id)
+    try:
+        for line in process.stdout:
+            text = line.rstrip()
+            if not text:
                 continue
-        except Exception:
-            pass
-        emit("task_log", {"level": "info", "message": text}, task_id=task_id)
-    return process.wait(), "\n".join(lines[-40:])
+            lines.append(text)
+            try:
+                event = json.loads(text)
+                if isinstance(event, dict) and isinstance(event.get("type"), str):
+                    emit(event["type"], event.get("payload") if isinstance(event.get("payload"), dict) else {}, task_id=task_id)
+                    continue
+            except Exception:
+                pass
+            emit("task_log", {"level": "info", "message": text}, task_id=task_id)
+        return process.wait(), "\n".join(lines[-40:])
+    finally:
+        timer.cancel()
 
 
 def _workflow_task_output_dir(output_dir: str, input_path: str, output_layout: str) -> Path:
