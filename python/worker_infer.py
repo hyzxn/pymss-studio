@@ -99,7 +99,7 @@ def _normalize_output_dir(value: Any) -> str:
     output_dir = value or default_output_dir or "results"
     output_path = Path(str(output_dir))
     if not output_path.is_absolute() and default_output_dir:
-        return str(Path(default_output_dir).parent / output_path)
+        return str(Path(default_output_dir).resolve().parent / output_path)
     return str(output_dir)
 
 def _normalize_selected_stems(value: Any) -> list[str]:
@@ -514,11 +514,7 @@ def cmd_infer(payload: dict[str, Any]) -> int:
     task_id = payload.get("taskId") or f"sep_{int(datetime.now().timestamp())}"
     model_name = payload.get("model")
     input_path = payload.get("input")
-    default_output_dir = os.environ.get("PYMSS_STUDIO_DEFAULT_OUTPUT_DIR")
-    output_dir = payload.get("output") or default_output_dir or "results"
-    output_path = Path(output_dir)
-    if not output_path.is_absolute() and default_output_dir:
-        output_dir = str(Path(default_output_dir).parent / output_path)
+    output_dir = _normalize_output_dir(payload.get("output"))
     if not model_name:
         return emit_error("MODEL_NOT_FOUND", "Missing model name", task_id=task_id)
     if not input_path:

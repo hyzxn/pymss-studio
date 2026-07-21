@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -14,8 +15,12 @@ from worker_protocol import emit, emit_error
 
 
 def _normalize_output_dir(value: Any) -> str:
-    text = str(value or "").strip()
-    return text or "results"
+    default_output_dir = os.environ.get("PYMSS_STUDIO_DEFAULT_OUTPUT_DIR")
+    output_dir = value or default_output_dir or "results"
+    output_path = Path(str(output_dir))
+    if not output_path.is_absolute() and default_output_dir:
+        return str(Path(default_output_dir).parent / output_path)
+    return str(output_dir)
 
 
 def _write_workflow_definition(payload: dict[str, Any], task_id: str) -> Path:
