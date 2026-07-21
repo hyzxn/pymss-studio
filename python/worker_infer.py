@@ -449,16 +449,14 @@ def cmd_infer_batch(payload: dict[str, Any]) -> int:
         last_reported_done = done_value
         last_reported_total = total_value
         last_progress_message = safe_message
-        targets = [active_task_id] if active_task_id else [item["taskId"] for item in batch_tasks]
-        for task_id in targets:
-            if not task_id:
-                continue
-            emit("task_progress", {
-                "stage": "separating",
-                "message": safe_message,
-                "done": done_value,
-                "total": total_value,
-            }, task_id=task_id)
+        if not active_task_id:
+            return
+        emit("task_progress", {
+            "stage": "separating",
+            "message": safe_message,
+            "done": done_value,
+            "total": total_value,
+        }, task_id=active_task_id)
 
     try:
         Path(output_root).mkdir(parents=True, exist_ok=True)
