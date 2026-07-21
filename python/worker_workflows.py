@@ -196,6 +196,7 @@ def cmd_infer_workflow_batch(payload: dict[str, Any]) -> int:
         return _emit_workflow_batch_error(raw_tasks, root_task_id, "WORKFLOW_MISSING", "Workflow definition is required")
 
     failed = False
+    succeeded_task_ids: set[str] = set()
     try:
         graph_workflow = is_graph_workflow_definition(payload.get("workflow"))
         output_root = Path(output_dir)
@@ -222,6 +223,7 @@ def cmd_infer_workflow_batch(payload: dict[str, Any]) -> int:
                     continue
                 emit("task_stage", {"stage": "writing_output", "message": "Collecting workflow outputs", "progress": 92}, task_id=task_id)
                 emit("task_done", result, task_id=task_id)
+                succeeded_task_ids.add(task_id)
                 continue
             failures: list[str] = []
             completed = False
@@ -239,13 +241,14 @@ def cmd_infer_workflow_batch(payload: dict[str, Any]) -> int:
                 outputs = collect_outputs(str(task_output_dir), [Path(input_path).name], output_format)
                 files = [output["path"] for output in outputs]
                 if not files and task_output_dir.exists():
-                    files = [str(path) for path in task_output_dir.rglob("*") if path.is_file()]
+                    files = [str(path) for path in task_output_dir.rglob(f"*.{output_format}") if path.is_file()]
                 emit("task_done", {
                     "files": files,
                     "outputs": outputs,
                     "outputDir": str(task_output_dir.resolve()),
                     "outputFormat": output_format,
                 }, task_id=task_id)
+                succeeded_task_ids.add(task_id)
                 completed = True
                 break
             if not completed:
@@ -260,7 +263,8 @@ def cmd_infer_workflow_batch(payload: dict[str, Any]) -> int:
     except Exception as exc:
         detail = traceback.format_exc()
         for item in batch_tasks:
-            emit_error("WORKFLOW_RUN_FAILED", str(exc), detail, task_id=item["taskId"])
+            if item["taskId"] not in succeeded_task_ids:
+                emit_error("WORKFLOW_RUN_FAILED", str(exc), detail, task_id=item["taskId"])
         return 1
 
 
@@ -318,7 +322,7 @@ def cmd_infer_workflow(payload: dict[str, Any]) -> int:
                 outputs = collect_outputs(str(task_output_dir), [source_path.name], output_format)
                 files = [item["path"] for item in outputs]
                 if not files:
-                    files = [str(path) for path in task_output_dir.rglob("*") if path.is_file()]
+                    files = [str(path) for path in task_output_dir.rglob(f"*.{output_format}") if path.is_file()]
                 emit("task_done", {
                     "files": files,
                     "outputs": outputs,
