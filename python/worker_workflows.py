@@ -5,6 +5,7 @@ import subprocess
 import sys
 import tempfile
 import threading
+import time
 import traceback
 from pathlib import Path
 from typing import Any
@@ -201,6 +202,7 @@ def cmd_infer_workflow_batch(payload: dict[str, Any]) -> int:
         graph_workflow = is_graph_workflow_definition(payload.get("workflow"))
         output_root = Path(output_dir)
         output_root.mkdir(parents=True, exist_ok=True)
+        batch_start_time = time.time()
         for item in batch_tasks:
             task_id = item["taskId"]
             input_path = item["input"]
@@ -238,10 +240,10 @@ def cmd_infer_workflow_batch(payload: dict[str, Any]) -> int:
                     continue
 
                 emit("task_stage", {"stage": "writing_output", "message": "Collecting workflow outputs", "progress": 92}, task_id=task_id)
-                outputs = collect_outputs(str(task_output_dir), [Path(input_path).name], output_format)
+                outputs = collect_outputs(str(task_output_dir), [Path(input_path).name], output_format, min_mtime=batch_start_time)
                 files = [output["path"] for output in outputs]
                 if not files and task_output_dir.exists():
-                    files = [str(path) for path in task_output_dir.rglob(f"*.{output_format}") if path.is_file()]
+                    files = [str(path) for path in task_output_dir.rglob(f"*.{output_format}") if path.is_file() and path.stat().st_mtime >= batch_start_time]
                 emit("task_done", {
                     "files": files,
                     "outputs": outputs,
@@ -290,6 +292,7 @@ def cmd_infer_workflow(payload: dict[str, Any]) -> int:
         source_path = Path(input_path)
         task_output_dir = _workflow_task_output_dir(output_dir, input_path, output_layout)
         Path(output_dir).mkdir(parents=True, exist_ok=True)
+        workflow_start_time = time.time()
         emit("task_started", {"workflow": payload.get("workflowName"), "input": input_path, "output": str(task_output_dir)}, task_id=task_id)
         emit("task_stage", {"stage": "validating_input", "message": "Validating workflow input", "progress": 12}, task_id=task_id)
         if not source_path.exists():
@@ -319,10 +322,10 @@ def cmd_infer_workflow(payload: dict[str, Any]) -> int:
                 continue
             if code == 0:
                 emit("task_stage", {"stage": "writing_output", "message": "Collecting workflow outputs", "progress": 92}, task_id=task_id)
-                outputs = collect_outputs(str(task_output_dir), [source_path.name], output_format)
+                outputs = collect_outputs(str(task_output_dir), [source_path.name], output_format, min_mtime=workflow_start_time)
                 files = [item["path"] for item in outputs]
                 if not files:
-                    files = [str(path) for path in task_output_dir.rglob(f"*.{output_format}") if path.is_file()]
+                    files = [str(path) for path in task_output_dir.rglob(f"*.{output_format}") if path.is_file() and path.stat().st_mtime >= workflow_start_time]
                 emit("task_done", {
                     "files": files,
                     "outputs": outputs,

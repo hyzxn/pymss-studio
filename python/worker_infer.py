@@ -27,7 +27,7 @@ class JsonLogHandler:
         return True
 
 
-def collect_outputs(output_dir: str, success_files: list[str], output_format: str) -> list[dict[str, str]]:
+def collect_outputs(output_dir: str, success_files: list[str], output_format: str, min_mtime: float = 0) -> list[dict[str, str]]:
     base = Path(output_dir)
     outputs: list[dict[str, str]] = []
     if not base.exists():
@@ -38,6 +38,8 @@ def collect_outputs(output_dir: str, success_files: list[str], output_format: st
         reverse=True,
     )
     for path in base.rglob(f"*.{output_format.lower()}"):
+        if min_mtime > 0 and path.stat().st_mtime < min_mtime:
+            continue
         matched_prefix = None
         for success_stem in success_stems:
             if path.stem == success_stem or path.stem.startswith(success_stem + "_"):
