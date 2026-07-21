@@ -658,23 +658,7 @@ def cmd_infer(payload: dict[str, Any]) -> int:
         emit("task_done", {"files": success_files, "outputs": outputs, "outputDir": str(Path(task_output).resolve()), "outputFormat": output_format}, task_id=task_id)
         return 0
     except Exception as exc:
-        message = str(exc)
-        lowered = message.lower()
-        if "no audio stream found" in lowered:
-            return emit_error(
-                "INPUT_AUDIO_STREAM_MISSING",
-                message,
-                traceback.format_exc(),
-                task_id=task_id,
-            )
-        if "invalid data found" in lowered or "could not open input" in lowered:
-            return emit_error(
-                "INPUT_MEDIA_UNSUPPORTED",
-                message,
-                traceback.format_exc(),
-                task_id=task_id,
-            )
-        return emit_error("INFERENCE_FAILED", message, traceback.format_exc(), task_id=task_id)
+        return _emit_inference_error(exc, task_id)
     finally:
         if logger is not None and log_handler is not None:
             try:
