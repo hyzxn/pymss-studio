@@ -6,7 +6,7 @@ from typing import Any
 
 import numpy as np
 
-from worker_infer import JsonLogHandler, _prepare_separator, normalize_audio_params, resolve_pymss_output_dir
+from worker_infer import JsonLogHandler, _close_separator, _prepare_separator, normalize_audio_params, resolve_pymss_output_dir
 from worker_protocol import emit
 
 
@@ -477,13 +477,7 @@ def _execute_separate_node(
             )
         return selected
     finally:
-        close = getattr(separator, "close", None)
-        if callable(close):
-            close()
-        else:
-            cleanup = getattr(separator, "del_cache", None)
-            if callable(cleanup):
-                cleanup()
+        _close_separator(separator)
 
 
 def _save_targets_for_graph(
