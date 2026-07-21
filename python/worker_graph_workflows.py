@@ -6,7 +6,7 @@ from typing import Any
 
 import numpy as np
 
-from worker_infer import JsonLogHandler, _prepare_separator, normalize_audio_params, resolve_pymss_output_dir
+from worker_infer import JsonLogHandler, _close_separator, _prepare_separator, normalize_audio_params, resolve_pymss_output_dir
 from worker_protocol import emit
 
 
@@ -40,12 +40,17 @@ class SaveTarget:
 
 
 def is_graph_workflow_definition(definition: Any) -> bool:
-    return (
-        isinstance(definition, dict)
-        and definition.get("kind") == "pymss-studio-graph"
-        and int(definition.get("version") or 0) == 2
-        and isinstance(definition.get("graph"), dict)
-    )
+    if not isinstance(definition, dict):
+        return False
+    if definition.get("kind") != "pymss-studio-graph":
+        return False
+    if not isinstance(definition.get("graph"), dict):
+        return False
+    try:
+        version = int(definition.get("version") or 0)
+    except (TypeError, ValueError):
+        return False
+    return version == 2
 
 
 def _is_record(value: Any) -> bool:
@@ -477,13 +482,7 @@ def _execute_separate_node(
             )
         return selected
     finally:
-        close = getattr(separator, "close", None)
-        if callable(close):
-            close()
-        else:
-            cleanup = getattr(separator, "del_cache", None)
-            if callable(cleanup):
-                cleanup()
+        _close_separator(separator)
 
 
 def _save_targets_for_graph(

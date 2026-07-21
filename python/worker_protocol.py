@@ -94,10 +94,17 @@ def import_available(name: str) -> bool:
 def load_payload(payload_arg: str | None) -> dict[str, Any]:
     if not payload_arg:
         return {}
-    path = Path(payload_arg)
-    if path.is_file():
-        return json.loads(path.read_text(encoding="utf-8"))
-    return json.loads(payload_arg)
+    try:
+        path = Path(payload_arg)
+        if path.is_file():
+            data = json.loads(path.read_text(encoding="utf-8"))
+        else:
+            data = json.loads(payload_arg)
+    except (json.JSONDecodeError, OSError) as exc:
+        raise ValueError(f"Invalid payload: {exc}") from exc
+    if not isinstance(data, dict):
+        raise ValueError(f"Payload must be a JSON object, got {type(data).__name__}")
+    return data
 
 
 def _as_int(value: Any) -> int | None:

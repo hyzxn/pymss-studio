@@ -152,7 +152,7 @@ def cmd_waveform_peaks(payload: dict[str, Any]) -> int:
     path = Path(path_value)
     resolution = int(payload.get("resolution") or 1400)
     resolution = max(80, min(12000, resolution))
-    cache_dir = Path(payload.get("cacheDir") or path.parent / ".pymss-peaks")
+    cache_dir = Path(payload.get("cacheDir") or path.parent / ".pymss-peaks").resolve()
     cache_dir.mkdir(parents=True, exist_ok=True)
     cache_key = hashlib.sha1(str(path.resolve()).encode("utf-8", errors="replace")).hexdigest()[:16]
     cache_name = f"{path.stem}_{cache_key}_{resolution}.json"
@@ -286,8 +286,10 @@ def cmd_export_editor_mix(payload: dict[str, Any]) -> int:
             if has_solo and not track.get("solo"):
                 continue
 
-            track_volume = float(track.get("volume", 1.0) or 0)
-            track_pan = float(track.get("pan", 0.0) or 0.0)
+            raw_vol = track.get("volume")
+            track_volume = float(raw_vol if raw_vol is not None else 1.0)
+            raw_pan = track.get("pan")
+            track_pan = float(raw_pan if raw_pan is not None else 0.0)
             if track_volume <= 0:
                 continue
 
@@ -316,7 +318,8 @@ def cmd_export_editor_mix(payload: dict[str, Any]) -> int:
                     continue
 
                 segment = audio[:, offset:offset + duration_samples].copy()
-                volume = track_volume * float(clip.get("volume", 1.0) or 0)
+                raw_clip_vol = clip.get("volume")
+                volume = track_volume * float(raw_clip_vol if raw_clip_vol is not None else 1.0)
                 if volume <= 0:
                     continue
                 segment *= volume
@@ -347,10 +350,12 @@ def cmd_export_editor_mix(payload: dict[str, Any]) -> int:
                 segment = np.concatenate([segment, pad], axis=0)
             mix[:, start:start + segment.shape[-1]] += segment[:channels]
 
-        master_volume = float(project.get("masterVolume", 1.0) or 0)
+        raw_master_vol = project.get("masterVolume")
+        master_volume = float(raw_master_vol if raw_master_vol is not None else 1.0)
         if master_volume != 1.0:
             mix *= master_volume
-        master_pan = float(project.get("masterPan", 0.0) or 0.0)
+        raw_master_pan = project.get("masterPan")
+        master_pan = float(raw_master_pan if raw_master_pan is not None else 0.0)
         mix = _apply_stereo_pan(mix, master_pan)
 
         peak = float(np.max(np.abs(mix))) if mix.size else 0.0
