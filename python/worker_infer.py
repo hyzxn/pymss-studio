@@ -475,16 +475,15 @@ def cmd_infer_batch(payload: dict[str, Any]) -> int:
         last_reported_done = done_value
         last_reported_total = total_value
         last_progress_message = safe_message
-        targets = [active_task_id] if active_task_id else [item["taskId"] for item in batch_tasks]
-        for task_id in targets:
-            if not task_id:
-                continue
-            emit("task_progress", {
-                "stage": "separating",
-                "message": safe_message,
-                "done": done_value,
-                "total": total_value,
-            }, task_id=task_id)
+        target = active_task_id
+        if not target:
+            return
+        emit("task_progress", {
+            "stage": "separating",
+            "message": safe_message,
+            "done": done_value,
+            "total": total_value,
+        }, task_id=target)
 
     try:
         Path(output_root).mkdir(parents=True, exist_ok=True)
@@ -684,23 +683,7 @@ def cmd_infer(payload: dict[str, Any]) -> int:
         emit("task_done", {"files": success_files, "outputs": outputs, "outputDir": str(Path(task_output).resolve()), "outputFormat": output_format}, task_id=task_id)
         return 0
     except Exception as exc:
-        message = str(exc)
-        lowered = message.lower()
-        if "no audio stream found" in lowered:
-            return emit_error(
-                "INPUT_AUDIO_STREAM_MISSING",
-                message,
-                traceback.format_exc(),
-                task_id=task_id,
-            )
-        if "invalid data found" in lowered or "could not open input" in lowered:
-            return emit_error(
-                "INPUT_MEDIA_UNSUPPORTED",
-                message,
-                traceback.format_exc(),
-                task_id=task_id,
-            )
-        return emit_error("INFERENCE_FAILED", message, traceback.format_exc(), task_id=task_id)
+        return _emit_inference_error(exc, task_id)
     finally:
         if logger is not None and log_handler is not None:
             try:
