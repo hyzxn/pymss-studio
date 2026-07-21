@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import gc
 import os
 import traceback
 from datetime import datetime
@@ -65,6 +66,18 @@ def _emit_inference_error(exc: Exception, task_id: str) -> int:
         )
     return emit_error("INFERENCE_FAILED", message, traceback.format_exc(), task_id=task_id)
 
+def _purge_cuda() -> None:
+    try:
+        gc.collect()
+        import torch
+        torch.cuda.synchronize()
+        torch.cuda.empty_cache()
+        torch.cuda.reset_peak_memory_stats()
+        torch.cuda.reset_accumulated_memory_stats()
+    except Exception:
+        pass
+
+
 def _close_separator(separator: Any) -> None:
     if separator is None:
         return
@@ -79,6 +92,7 @@ def _close_separator(separator: Any) -> None:
             separator.del_cache()
         except Exception:
             pass
+    _purge_cuda()
 
 def _normalize_output_dir(value: Any) -> str:
     default_output_dir = os.environ.get("PYMSS_STUDIO_DEFAULT_OUTPUT_DIR")
@@ -667,15 +681,4 @@ def cmd_infer(payload: dict[str, Any]) -> int:
                 logger.removeHandler(log_handler)
             except Exception:
                 pass
-        if separator is not None:
-            close = getattr(separator, "close", None)
-            if callable(close):
-                try:
-                    close()
-                except Exception:
-                    pass
-            else:
-                try:
-                    separator.del_cache()
-                except Exception:
-                    pass
+        _close_separator(separator)
