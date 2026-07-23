@@ -431,6 +431,7 @@ def _execute_separate_node(
             task_id=task_id,
         )
 
+    _purge_cuda()
     separator = _prepare_separator(
         payload={
             **payload,
