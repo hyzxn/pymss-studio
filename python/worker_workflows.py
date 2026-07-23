@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from worker_graph_workflows import is_graph_workflow_definition, run_graph_workflow_task
-from worker_infer import _normalize_output_dir, _normalize_output_layout, _resolve_separator_device, collect_outputs
+from worker_infer import _normalize_output_dir, _normalize_output_layout, _purge_cuda, _resolve_separator_device, collect_outputs
 from worker_protocol import emit, emit_error
 
 
@@ -237,10 +237,12 @@ def cmd_infer_workflow_batch(payload: dict[str, Any]) -> int:
                     failed = True
                     failed_task_ids.add(task_id)
                     emit_error("WORKFLOW_RUN_FAILED", str(exc), traceback.format_exc(), task_id=task_id)
+                    _purge_cuda()
                     continue
                 emit("task_stage", {"stage": "writing_output", "message": "Collecting workflow outputs", "progress": 92}, task_id=task_id)
                 emit("task_done", result, task_id=task_id)
                 succeeded_task_ids.add(task_id)
+                _purge_cuda()
                 continue
             failures: list[str] = []
             completed = False

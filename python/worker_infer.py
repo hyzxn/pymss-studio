@@ -290,8 +290,15 @@ def _sanitize_runtime_inference_params(params: dict[str, Any]) -> dict[str, Any]
             return
         next_params[key] = value
 
-    for numeric_key in ("batch_size", "overlap_size", "num_overlap", "chunk_size", "window_size"):
+    for numeric_key in ("batch_size", "num_overlap", "chunk_size", "window_size"):
         _drop_non_positive_int(numeric_key)
+
+    if "overlap_size" in next_params:
+        overlap_value = _as_int(next_params.get("overlap_size"))
+        if overlap_value is None or overlap_value < 0:
+            next_params.pop("overlap_size", None)
+        else:
+            next_params["overlap_size"] = overlap_value
 
     if "aggression" in next_params:
         aggression_value = _as_int(next_params.get("aggression"))
@@ -676,7 +683,7 @@ def cmd_infer(payload: dict[str, Any]) -> int:
         emit("task_stage", {"stage": "separating", "message": "Separating"}, task_id=task_id)
         success_files = separator.process_folder(input_path)
         emit("task_stage", {"stage": "writing_output", "message": "Collecting outputs"}, task_id=task_id)
-        task_output = resolve_pymss_output_dir(output_dir, success_files, input_path, save_as_folder)
+        task_output = resolve_pymss_output_dir(output_dir, [], input_path, save_as_folder)
         outputs = collect_outputs(task_output, success_files, output_format)
         emit("task_done", {"files": success_files, "outputs": outputs, "outputDir": str(Path(task_output).resolve()), "outputFormat": output_format}, task_id=task_id)
         return 0
