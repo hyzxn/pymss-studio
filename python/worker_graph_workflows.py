@@ -432,18 +432,22 @@ def _execute_separate_node(
         )
 
     _purge_cuda()
-    separator = _prepare_separator(
-        payload={
-            **payload,
-            "model": model_name,
-            "selectedStems": stems,
-            "inferenceParams": inference_params,
-            "output": payload.get("output") or "results",
-        },
-        task_id=task_id,
-        progress_callback=emit_node_progress,
-        logger=logger,
-    )
+    try:
+        separator = _prepare_separator(
+            payload={
+                **payload,
+                "model": model_name,
+                "selectedStems": stems,
+                "inferenceParams": inference_params,
+                "output": payload.get("output") or "results",
+            },
+            task_id=task_id,
+            progress_callback=emit_node_progress,
+            logger=logger,
+        )
+    except Exception:
+        _purge_cuda()
+        raise
     try:
         audio_config = getattr(getattr(separator, "config", {}), "audio", {}) or {}
         sample_rate = int(audio_config.get("sample_rate", source.sample_rate))
@@ -639,6 +643,7 @@ def run_graph_workflow_task(
             "outputFormat": output_format,
         }
     finally:
+        _purge_cuda()
         if logger is not None and log_handler is not None:
             try:
                 logger.removeHandler(log_handler)

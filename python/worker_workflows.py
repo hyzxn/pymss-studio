@@ -332,9 +332,11 @@ def cmd_infer_workflow(payload: dict[str, Any]) -> int:
                     output_layout=output_layout,
                 )
             except Exception as exc:
+                _purge_cuda()
                 return emit_error("WORKFLOW_RUN_FAILED", str(exc), traceback.format_exc(), task_id=task_id)
             emit("task_stage", {"stage": "writing_output", "message": "Collecting workflow outputs", "progress": 92}, task_id=task_id)
             emit("task_done", result, task_id=task_id)
+            _purge_cuda()
             return 0
         failures: list[str] = []
         for command in _candidate_commands(workflow_path, input_path, output_dir, payload, output_layout):
