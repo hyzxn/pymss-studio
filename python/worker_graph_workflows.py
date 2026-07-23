@@ -6,7 +6,7 @@ from typing import Any
 
 import numpy as np
 
-from worker_infer import JsonLogHandler, _close_separator, _prepare_separator, normalize_audio_params, resolve_pymss_output_dir
+from worker_infer import JsonLogHandler, _close_separator, _prepare_separator, _purge_cuda, normalize_audio_params, resolve_pymss_output_dir
 from worker_protocol import emit
 
 
@@ -605,6 +605,7 @@ def run_graph_workflow_task(
                         logger=logger,
                     )
                 )
+                _purge_cuda()
                 continue
             if node_type in UTILITY_NODE_TYPES:
                 artifacts[f"utility:{node_id}"] = _execute_utility_node(

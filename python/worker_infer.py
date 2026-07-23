@@ -77,6 +77,7 @@ def _purge_cuda() -> None:
         torch.cuda.empty_cache()
         torch.cuda.reset_peak_memory_stats()
         torch.cuda.reset_accumulated_memory_stats()
+        torch.backends.cudnn.benchmark = False
     except Exception:
         pass
 
