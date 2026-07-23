@@ -505,7 +505,7 @@ def cmd_infer_batch(payload: dict[str, Any]) -> int:
                 failed = True
                 failed_task_ids.add(task_id)
                 continue
-            task_output = resolve_pymss_output_dir(output_root, success_files, item["input"], save_as_folder)
+            task_output = resolve_pymss_output_dir(output_root, [], item["input"], save_as_folder)
             emit("task_stage", {"stage": "writing_output", "message": "Collecting outputs"}, task_id=task_id)
             outputs = collect_outputs(task_output, success_files, output_format)
             emit("task_done", {
