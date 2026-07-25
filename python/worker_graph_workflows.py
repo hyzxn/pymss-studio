@@ -610,7 +610,6 @@ def run_graph_workflow_task(
                         logger=logger,
                     )
                 )
-                _purge_cuda()
                 continue
             if node_type in UTILITY_NODE_TYPES:
                 artifacts[f"utility:{node_id}"] = _execute_utility_node(
@@ -643,7 +642,6 @@ def run_graph_workflow_task(
             "outputFormat": output_format,
         }
     finally:
-        _purge_cuda()
         if logger is not None and log_handler is not None:
             try:
                 logger.removeHandler(log_handler)
