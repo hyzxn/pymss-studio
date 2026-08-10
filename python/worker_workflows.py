@@ -205,6 +205,8 @@ def cmd_infer_workflow_batch(payload: dict[str, Any]) -> int:
         return _emit_workflow_batch_error(raw_tasks, root_task_id, "WORKFLOW_MISSING", "Workflow definition is required")
 
     failed = False
+    succeeded_task_ids: set[str] = set()
+    failed_task_ids: set[str] = set()
     try:
         graph_workflow = is_graph_workflow_definition(payload.get("workflow"))
         output_root = Path(output_dir)
@@ -227,10 +229,12 @@ def cmd_infer_workflow_batch(payload: dict[str, Any]) -> int:
                     )
                 except Exception as exc:
                     failed = True
+                    failed_task_ids.add(task_id)
                     emit_error("WORKFLOW_RUN_FAILED", str(exc), traceback.format_exc(), task_id=task_id)
                     continue
                 emit("task_stage", {"stage": "writing_output", "message": "Collecting workflow outputs", "progress": 92}, task_id=task_id)
                 emit("task_done", result, task_id=task_id)
+                succeeded_task_ids.add(task_id)
                 continue
             failures: list[str] = []
             completed = False
@@ -263,10 +267,12 @@ def cmd_infer_workflow_batch(payload: dict[str, Any]) -> int:
                     "outputDir": str(task_output_dir.resolve()),
                     "outputFormat": output_format,
                 }, task_id=task_id)
+                succeeded_task_ids.add(task_id)
                 completed = True
                 break
             if not completed:
                 failed = True
+                failed_task_ids.add(task_id)
                 emit_error(
                     "WORKFLOW_RUN_FAILED",
                     "Unable to run workflow with the installed pymss package.",
@@ -277,7 +283,8 @@ def cmd_infer_workflow_batch(payload: dict[str, Any]) -> int:
     except Exception as exc:
         detail = traceback.format_exc()
         for item in batch_tasks:
-            emit_error("WORKFLOW_RUN_FAILED", str(exc), detail, task_id=item["taskId"])
+            if item["taskId"] not in succeeded_task_ids and item["taskId"] not in failed_task_ids:
+                emit_error("WORKFLOW_RUN_FAILED", str(exc), detail, task_id=item["taskId"])
         return 1
 
 
