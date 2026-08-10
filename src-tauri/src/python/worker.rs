@@ -719,7 +719,15 @@ pub fn run_worker_with_payload(
     let mut cmd = build_worker_command(app, command, payload_file.as_ref())?;
     let started_at = std::time::Instant::now();
     session_log::append(app, "INFO", "worker.spawn", vec![("command", command.to_string())]);
-    let mut child = cmd.stdout(Stdio::piped()).stderr(Stdio::piped()).spawn()?;
+    let mut child = match cmd.stdout(Stdio::piped()).stderr(Stdio::piped()).spawn() {
+        Ok(child) => child,
+        Err(error) => {
+            if let Some(path) = payload_file.as_ref() {
+                let _ = std::fs::remove_file(path);
+            }
+            return Err(error.into());
+        }
+    };
 
     let stdout = child
         .stdout
@@ -775,7 +783,15 @@ pub fn run_worker_with_payload(
             }
         }
     });
-    let status = child.wait()?;
+    let status = match child.wait() {
+        Ok(status) => status,
+        Err(error) => {
+            if let Some(path) = payload_file.as_ref() {
+                let _ = std::fs::remove_file(path);
+            }
+            return Err(error.into());
+        }
+    };
     session_log::append(
         app,
         if status.success() { "INFO" } else { "ERROR" },
@@ -867,7 +883,13 @@ pub fn spawn_worker_background(
         "worker.spawn",
         vec![("command", command.to_string()), ("taskId", task_id.clone())],
     );
-    let mut child: Child = cmd.stdout(Stdio::piped()).stderr(Stdio::piped()).spawn()?;
+    let mut child: Child = match cmd.stdout(Stdio::piped()).stderr(Stdio::piped()).spawn() {
+        Ok(child) => child,
+        Err(error) => {
+            let _ = std::fs::remove_file(&payload_file);
+            return Err(error.into());
+        }
+    };
     let stdout = child
         .stdout
         .take()
@@ -978,7 +1000,13 @@ pub fn spawn_worker_background(
                         "worker exited unexpectedly".to_string(),
                     );
                 }
-                _ => {}
+                _ => {
+                    emit_task_error_to_all(
+                        &app,
+                        &missing_terminal_task_ids,
+                        "worker exited without reporting results".to_string(),
+                    );
+                }
             }
         }
         if let Some(handle) = stderr_handle {
