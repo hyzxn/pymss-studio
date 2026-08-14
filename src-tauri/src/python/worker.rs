@@ -874,16 +874,14 @@ pub fn spawn_worker_background(
         .ok_or_else(|| AppError::Worker("missing worker stdout".into()))?;
     let stderr = child.stderr.take();
     let stderr_app = app.clone();
-    let stderr_task_ids = registered_task_ids.clone();
+    let stderr_task_id = task_id.clone();
     let stderr_handle = stderr.map(|stderr| {
         std::thread::spawn(move || {
             read_lossy_lines(stderr, |line| {
                 if forward_python_terminal_log(&line) {
                     return;
                 }
-                for stderr_task_id in &stderr_task_ids {
-                    emit_task_log(&stderr_app, stderr_task_id, "warning", line.clone());
-                }
+                emit_task_log(&stderr_app, &stderr_task_id, "warning", line.clone());
             });
         })
     });
